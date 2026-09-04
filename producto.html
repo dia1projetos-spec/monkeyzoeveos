@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Producto · Zoë véos</title>
+  <meta name="description" content="Producto exclusivo de Zoë véos para el hogar y la maternidad.">
+  <meta name="robots" content="index,follow">
+  <meta name="theme-color" content="#f6f0e6">
+  <meta property="og:locale" content="es_AR">
+  <meta property="og:type" content="product">
+  <meta property="og:site_name" content="Zoë véos">
+  <meta property="og:title" content="Producto · Zoë véos">
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body data-page="product">
+  <a class="skip-link" href="#contenido">Saltar al contenido</a>
+  <div class="page">
+    <header class="topbar">
+      <button class="icon-btn" data-open-menu aria-label="Menú">
+        <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+      <a class="brand" href="index.html">
+        <div class="wreath">
+          <div class="wreath-inner">
+            <div>
+              <h1>Zoë véos</h1>
+              <p>Diseños exclusivos</p>
+            </div>
+          </div>
+        </div>
+      </a>
+      <a class="icon-btn cart-btn" href="carrito.html" aria-label="Carrito">
+        <svg viewBox="0 0 24 24"><path d="M6 8h12l-1 12H7L6 8z"/><path d="M9 8a3 3 0 0 1 6 0"/></svg>
+        <span class="cart-count" data-cart-count>0</span>
+      </a>
+    </header>
+    <main id="contenido" data-product-page></main>
+    <footer class="site-footer">© Zoë véos - Diseños exclusivos | Todos los derechos reservados ♡</footer>
+  </div>
+  <div class="drawer" data-drawer>
+    <nav class="drawer-panel">
+      <button class="icon-btn" data-close-menu aria-label="Cerrar">✕</button>
+      <a href="index.html">Inicio</a>
+      <div data-menu-cats></div>
+      <a href="carrito.html">Carrito</a>
+      <a href="admin/index.html">Administración</a>
+    </nav>
+  </div>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/firebase.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/media.js"></script>
+  <script src="js/seo.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

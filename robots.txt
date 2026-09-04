@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /carrito.html
+
+Sitemap: /sitemap.xml
