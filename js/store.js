@@ -1,7 +1,5 @@
 const Store = (() => {
-  const KEY = "zoe-veos-data-v1";
   const CART_KEY = "zoe-veos-cart-v1";
-  const SESSION_KEY = "zoe-veos-admin";
 
   const seed = {
     categories: [
@@ -87,63 +85,136 @@ const Store = (() => {
         subcategoryId: "sub-regalos",
         image: "https://images.unsplash.com/photo-1519682337058-a94d519337bc?auto=format&fit=crop&w=1200&q=80"
       }
-    ]
+    ],
+    pages: [],
+    settings: {
+      logo: "assets/logo.svg",
+      brand: "Zoë véos",
+      tagline: "Diseños exclusivos",
+      seoTitle: "Zoë véos · Diseños exclusivos",
+      seoDescription: "Zoë véos. Diseños exclusivos para el hogar y la maternidad. Envíos a todo el país.",
+      seoKeywords: "hogar, maternidad, decoración, bebé, Argentina",
+      seoImage: "",
+      cloudinaryCloudName: "",
+      cloudinaryUploadPreset: ""
+    }
   };
+
+  let cache = null;
+  let ready = false;
+
+  function productSlug(p) {
+    return p.slug || slugify(p.name) || p.id;
+  }
 
   function normalize(data) {
     const next = data || {};
     next.categories ||= [];
     next.subcategories ||= [];
     next.products ||= [];
+    next.pages ||= [];
+    next.settings = Object.assign({
+      logo: "assets/logo.svg",
+      brand: "Zoë véos",
+      tagline: "Diseños exclusivos",
+      seoTitle: "Zoë véos · Diseños exclusivos",
+      seoDescription: "Zoë véos. Diseños exclusivos para el hogar y la maternidad. Envíos a todo el país.",
+      seoKeywords: "hogar, maternidad, decoración, bebé, Argentina",
+      seoImage: "",
+      cloudinaryCloudName: "",
+      cloudinaryUploadPreset: ""
+    }, next.settings || {});
     next.categories.forEach((c) => {
       c.mediaType = c.mediaType || (window.Media ? Media.typeFromUrl(c.image) : "image");
+    });
+    next.products.forEach((p) => {
+      p.slug = p.slug || slugify(p.name) || p.id;
+      p.seoTitle = p.seoTitle || p.name;
+      p.seoDescription = p.seoDescription || p.description || "";
+      p.seoKeywords = p.seoKeywords || "";
+    });
+    next.pages.forEach((p) => {
+      p.slug = p.slug || slugify(p.title || p.name);
+      p.published = p.published !== false;
+      p.showInMenu = Boolean(p.showInMenu);
+      p.mediaType = p.mediaType || (window.Media ? Media.typeFromUrl(p.image) : "image");
     });
     return next;
   }
 
-  function load() {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) {
-      const initial = structuredClone(seed);
-      localStorage.setItem(KEY, JSON.stringify(initial));
-      return initial;
+  function applyCloudFromSettings(data) {
+    const s = (data && data.settings) || {};
+    window.ZOE_CONFIG.cloudinary = {
+      cloudName: s.cloudinaryCloudName || window.ZOE_CONFIG.cloudinary.cloudName || "",
+      uploadPreset: s.cloudinaryUploadPreset || window.ZOE_CONFIG.cloudinary.uploadPreset || ""
+    };
+  }
+
+  function hasCatalog(remote) {
+    if (!remote) return false;
+    return Boolean(
+      (remote.categories && remote.categories.length) ||
+      (remote.products && remote.products.length) ||
+      (remote.subcategories && remote.subcategories.length) ||
+      (remote.pages && remote.pages.length) ||
+      (remote.settings && (remote.settings.logo || remote.settings.seoTitle || remote.settings.brand || remote.settings.cloudinaryCloudName))
+    );
+  }
+
+  function rejectEmbeddedMedia(data) {
+    const raw = JSON.stringify(data);
+    if (raw.includes("data:image") || raw.includes("data:video") || raw.includes("data:application")) {
+      throw new Error("No se pueden guardar archivos en Firebase. Subí el logo y las fotos a Cloudinary.");
     }
-    try {
-      return normalize(JSON.parse(raw));
-    } catch {
-      return structuredClone(seed);
+    if (raw.length > 900000) {
+      throw new Error("El catálogo es demasiado grande para Firebase. Usá Cloudinary para las imágenes.");
     }
   }
 
-  function save(data) {
-    localStorage.setItem(KEY, JSON.stringify(data));
+  function load() {
+    return cache || normalize(structuredClone(seed));
   }
 
   async function hydrate() {
-    const local = load();
-    if (!window.FirebaseReady || !FirebaseReady.configured()) return local;
+    cache = normalize(structuredClone(seed));
+    if (!window.FirebaseReady || !FirebaseReady.configured()) {
+      ready = true;
+      applyCloudFromSettings(cache);
+      return cache;
+    }
     try {
       FirebaseReady.init();
+      await FirebaseReady.waitAuth();
       const remote = await FirebaseReady.loadCatalog();
-      if (remote && (remote.categories.length || remote.products.length || remote.subcategories.length)) {
-        const merged = normalize(remote);
-        save(merged);
-        return merged;
-      }
-      if (FirebaseReady.currentUser()) {
-        await FirebaseReady.saveCatalog(local);
+      if (hasCatalog(remote)) {
+        cache = normalize(remote);
+      } else if (FirebaseReady.currentUser()) {
+        cache = normalize(structuredClone(seed));
+        await FirebaseReady.saveCatalog(cache);
       }
     } catch (err) {
       console.warn("Firebase catalog:", err);
     }
-    return local;
+    applyCloudFromSettings(cache);
+    ready = true;
+    return cache;
   }
 
   async function persist(data) {
-    save(data);
-    if (window.FirebaseReady && FirebaseReady.configured() && FirebaseReady.currentUser()) {
-      await FirebaseReady.saveCatalog(data);
+    const next = normalize(data);
+    rejectEmbeddedMedia(next);
+    if (!window.FirebaseReady || !FirebaseReady.configured()) {
+      throw new Error("Firebase no está configurado.");
     }
+    FirebaseReady.init();
+    const user = await FirebaseReady.waitAuth();
+    if (!user) {
+      throw new Error("Tenés que estar logueada para guardar en Firebase.");
+    }
+    await FirebaseReady.saveCatalog(next);
+    cache = next;
+    applyCloudFromSettings(cache);
+    return cache;
   }
 
   function uid(prefix) {
@@ -174,24 +245,35 @@ const Store = (() => {
     });
   }
 
+  function addToCart(productId, qty = 1) {
+    const cart = getCart();
+    const found = cart.find((i) => i.id === productId);
+    if (found) found.qty += qty;
+    else cart.push({ id: productId, qty });
+    saveCart(cart);
+    return cart;
+  }
+
   return {
     load,
-    save,
     hydrate,
     persist,
     uid,
     slugify,
+    productSlug,
     getCart,
     saveCart,
+    addToCart,
+    isReady() {
+      return ready;
+    },
     isAdmin() {
-      return Boolean(FirebaseReady.currentUser()) || sessionStorage.getItem(SESSION_KEY) === "ok";
+      return Boolean(FirebaseReady.currentUser());
     },
     async login(email, pass) {
       await FirebaseReady.login(email, pass);
-      sessionStorage.setItem(SESSION_KEY, "ok");
     },
     async logout() {
-      sessionStorage.removeItem(SESSION_KEY);
       await FirebaseReady.logout();
     }
   };

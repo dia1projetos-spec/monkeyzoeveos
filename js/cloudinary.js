@@ -1,7 +1,7 @@
 const Cloudinary = {
   configured() {
     const c = window.ZOE_CONFIG.cloudinary || {};
-    return Boolean(c.cloudName && (c.uploadPreset || c.apiKey));
+    return Boolean(c.cloudName || c.uploadPreset);
   },
 
   resourcePath(file) {
@@ -47,15 +47,24 @@ const Cloudinary = {
   },
 
   async upload(file) {
-    let json;
+    let signedError = null;
     try {
-      json = await this.uploadSigned(file);
-    } catch {
-      json = await this.uploadUnsigned(file);
+      const json = await this.uploadSigned(file);
+      return {
+        url: json.secure_url,
+        mediaType: json.resource_type === "video" ? "video" : Media.typeFromFile(file)
+      };
+    } catch (err) {
+      signedError = err;
     }
-    return {
-      url: json.secure_url,
-      mediaType: json.resource_type === "video" ? "video" : Media.typeFromFile(file)
-    };
+    try {
+      const json = await this.uploadUnsigned(file);
+      return {
+        url: json.secure_url,
+        mediaType: json.resource_type === "video" ? "video" : Media.typeFromFile(file)
+      };
+    } catch (err) {
+      throw new Error(signedError && signedError.message ? signedError.message : (err.message || "No se pudo subir el archivo a Cloudinary."));
+    }
   }
 };

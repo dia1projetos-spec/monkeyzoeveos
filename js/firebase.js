@@ -2,6 +2,7 @@ const FirebaseReady = {
   app: null,
   auth: null,
   db: null,
+  authReady: null,
 
   configured() {
     const f = window.ZOE_CONFIG.firebase || {};
@@ -13,7 +14,21 @@ const FirebaseReady = {
     this.app = firebase.initializeApp(window.ZOE_CONFIG.firebase);
     this.auth = firebase.auth();
     this.db = firebase.firestore();
+    this.authReady = new Promise((resolve) => {
+      const unsub = this.auth.onAuthStateChanged((user) => {
+        unsub();
+        resolve(user || null);
+      });
+    });
     return this;
+  },
+
+  async waitAuth() {
+    this.init();
+    if (!this.auth) return null;
+    if (this.auth.currentUser) return this.auth.currentUser;
+    if (this.authReady) return this.authReady;
+    return this.auth.currentUser;
   },
 
   catalogRef() {
@@ -30,17 +45,23 @@ const FirebaseReady = {
     return {
       categories: remote.categories || [],
       subcategories: remote.subcategories || [],
-      products: remote.products || []
+      products: remote.products || [],
+      pages: remote.pages || [],
+      settings: remote.settings || {}
     };
   },
 
   async saveCatalog(data) {
     this.init();
     if (!this.db) throw new Error("Firebase no está listo.");
+    const user = await this.waitAuth();
+    if (!user) throw new Error("Tenés que estar logueada para guardar en Firebase.");
     await this.catalogRef().set({
       categories: data.categories || [],
       subcategories: data.subcategories || [],
       products: data.products || [],
+      pages: data.pages || [],
+      settings: data.settings || {},
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
   },
@@ -52,7 +73,8 @@ const FirebaseReady = {
       "auth/wrong-password": "Contraseña incorrecta.",
       "auth/invalid-credential": "Email o contraseña incorrectos.",
       "auth/too-many-requests": "Demasiados intentos. Probá más tarde.",
-      "auth/network-request-failed": "No hay conexión con Firebase."
+      "auth/network-request-failed": "No hay conexión con Firebase.",
+      "permission-denied": "Firebase rechazó la escritura. Revisá las reglas de Firestore."
     };
     return map[err.code] || err.message || "No se pudo iniciar sesión.";
   },

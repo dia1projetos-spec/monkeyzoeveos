@@ -6,7 +6,8 @@ const SEO = (() => {
   }
 
   function abs(path) {
-    if (!path) return `${siteUrl()}/assets/logo.svg`;
+    const fallback = (window.Store ? Store.load().settings.logo : "") || "assets/logo.svg";
+    if (!path) return /^https?:\/\//i.test(fallback) || fallback.startsWith("data:") ? fallback : `${siteUrl()}/${fallback}`;
     if (/^https?:\/\//i.test(path) || path.startsWith("data:")) return path;
     return `${siteUrl()}/${String(path).replace(/^\//, "")}`;
   }
@@ -44,15 +45,15 @@ const SEO = (() => {
     el.textContent = JSON.stringify(data);
   }
 
-  function apply({ title, description, image, url, type = "website", jsonLd, robots = "index,follow" }) {
-    const fullTitle = title.includes(window.ZOE_CONFIG.brand)
-      ? title
-      : `${title} · ${window.ZOE_CONFIG.brand}`;
+  function apply({ title, description, image, url, type = "website", jsonLd, robots = "index,follow", keywords = "" }) {
+    const brand = (Store.load().settings || {}).brand || window.ZOE_CONFIG.brand;
+    const fullTitle = title.includes(brand) ? title : `${title} · ${brand}`;
     document.title = fullTitle;
     setMeta("name", "description", description);
+    setMeta("name", "keywords", keywords);
     setMeta("name", "robots", robots);
     setMeta("property", "og:locale", "es_AR");
-    setMeta("property", "og:site_name", window.ZOE_CONFIG.brand);
+    setMeta("property", "og:site_name", brand);
     setMeta("property", "og:type", type);
     setMeta("property", "og:title", fullTitle);
     setMeta("property", "og:description", description);
@@ -67,13 +68,14 @@ const SEO = (() => {
   }
 
   function organization() {
+    const s = (window.Store ? Store.load().settings : null) || {};
     return {
       "@context": "https://schema.org",
       "@type": "Organization",
-      name: window.ZOE_CONFIG.brand,
-      description: window.ZOE_CONFIG.description,
+      name: s.brand || window.ZOE_CONFIG.brand,
+      description: s.seoDescription || window.ZOE_CONFIG.description,
       url: siteUrl(),
-      logo: abs("assets/logo.svg")
+      logo: abs(s.logo || "assets/logo.svg")
     };
   }
 

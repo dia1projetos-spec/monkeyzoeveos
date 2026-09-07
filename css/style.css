@@ -145,6 +145,19 @@ select {
     url("../assets/logo.svg") center / 112% 112% no-repeat;
 }
 
+.wreath.has-custom-logo {
+  background-size: cover, contain !important;
+}
+
+.wreath.has-custom-logo .wreath-inner {
+  background: transparent;
+  box-shadow: none;
+}
+
+.wreath.has-custom-logo .wreath-inner > div {
+  display: none;
+}
+
 .wreath-inner {
   width: 108px;
   height: 108px;
@@ -472,6 +485,50 @@ select {
   font-family: "Cormorant Garamond", serif;
   font-size: 24px;
   font-weight: 500;
+}
+
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.card-actions .btn-rose {
+  margin-top: 0;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%) translateY(20px);
+  background: #5b4638;
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: 999px;
+  opacity: 0;
+  pointer-events: none;
+  transition: 0.2s ease;
+  z-index: 50;
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.landing-body {
+  background: var(--paper);
+  border-radius: 24px;
+  padding: 28px;
+  margin-top: 22px;
+  box-shadow: var(--shadow);
+  white-space: pre-wrap;
+}
+
+.landing-hero {
+  margin-top: 10px;
 }
 
 .price {

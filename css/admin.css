@@ -103,6 +103,18 @@ input, textarea, select {
   font: inherit;
 }
 
+input[type="file"] {
+  display: block;
+  width: 100%;
+  padding: 14px;
+  background: #fff7ef;
+  border: 2px dashed var(--rose);
+  border-radius: 16px;
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--ink);
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -123,6 +135,31 @@ th, td {
   object-fit: cover;
   border-radius: 10px;
   background: #efe6d8;
+}
+
+.logo-box {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 18px;
+  align-items: center;
+  background: #fff;
+  border: 1px dashed var(--line);
+  border-radius: 18px;
+  padding: 16px;
+  margin-bottom: 8px;
+}
+
+#site-logo-preview {
+  width: 160px;
+  height: 160px;
+  object-fit: contain;
+  background: #fff7ef;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+}
+
+@media (max-width: 800px) {
+  .logo-box { grid-template-columns: 1fr; }
 }
 
 .hint {

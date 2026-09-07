@@ -9,8 +9,14 @@ const Admin = (() => {
   async function showApp() {
     $("#login-view").classList.add("hidden");
     $("#app-view").classList.remove("hidden");
-    loadCloudForm();
     data = await Store.hydrate();
+    const user = FirebaseReady.currentUser();
+    if ($("#firebase-user")) {
+      $("#firebase-user").textContent = user
+        ? `Conectada a Firebase como ${user.email}. Los cambios se escriben en shop/catalog.`
+        : "No hay sesión de Firebase.";
+    }
+    loadCloudForm();
     renderAll();
   }
 
@@ -18,22 +24,14 @@ const Admin = (() => {
     const el = $("#status") || $("#login-status");
     if (!el) return;
     el.textContent = msg;
-    setTimeout(() => { if (el.textContent === msg) el.textContent = ""; }, 2800);
-  }
-
-  function cloudSettings() {
-    try {
-      return JSON.parse(localStorage.getItem("zoe-veos-cloudinary") || "{}");
-    } catch {
-      return {};
-    }
+    setTimeout(() => { if (el.textContent === msg) el.textContent = ""; }, 4200);
   }
 
   function applyCloudSettings() {
-    const saved = cloudSettings();
+    const s = (data.settings || {});
     window.ZOE_CONFIG.cloudinary = {
-      cloudName: saved.cloudName || window.ZOE_CONFIG.cloudinary.cloudName || "",
-      uploadPreset: saved.uploadPreset || window.ZOE_CONFIG.cloudinary.uploadPreset || ""
+      cloudName: s.cloudinaryCloudName || window.ZOE_CONFIG.cloudinary.cloudName || "",
+      uploadPreset: s.cloudinaryUploadPreset || window.ZOE_CONFIG.cloudinary.uploadPreset || ""
     };
   }
 
@@ -45,32 +43,29 @@ const Admin = (() => {
     if ($("#cloud-status")) {
       $("#cloud-status").textContent = c.cloudName
         ? "Cloudinary listo. Las subidas van a la carpeta zoe-veos."
-        : "Falta el Cloud Name.";
+        : "Falta el Cloud Name. Sin Cloudinary no se pueden subir archivos.";
     }
   }
 
   async function maybeUpload(input, fallbackUrl, fallbackType) {
     const file = input.files?.[0];
     if (!file) {
+      const url = fallbackUrl || "";
+      if (url.startsWith("data:")) {
+        throw new Error("Esa imagen está en el navegador, no en Firebase. Subila a Cloudinary.");
+      }
       return {
-        url: fallbackUrl || "",
-        mediaType: fallbackType || Media.typeFromUrl(fallbackUrl)
+        url,
+        mediaType: fallbackType || Media.typeFromUrl(url)
       };
     }
     applyCloudSettings();
-    if (Cloudinary.configured()) {
-      toast("Subiendo archivo a Cloudinary...");
-      const uploaded = await Cloudinary.upload(file);
-      return uploaded;
+    toast("Subiendo archivo a Cloudinary...");
+    try {
+      return await Cloudinary.upload(file);
+    } catch (err) {
+      throw new Error(err.message || "No se pudo subir a Cloudinary. Completá Cloud Name en la pestaña Cloudinary.");
     }
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve({
-        url: reader.result,
-        mediaType: Media.typeFromFile(file)
-      });
-      reader.readAsDataURL(file);
-    });
   }
 
   function fillSelects() {
@@ -122,11 +117,13 @@ const Admin = (() => {
     $("#prod-table").innerHTML = data.products.map((p) => {
       const cat = data.categories.find((c) => c.id === p.categoryId);
       const sub = data.subcategories.find((s) => s.id === p.subcategoryId);
+      const url = `../producto.html?slug=${encodeURIComponent(p.slug || p.id)}`;
       return `<tr>
         <td>${Media.thumbMarkup(p.image)}</td>
-        <td>${p.name}</td>
+        <td>${p.name}<br><small>${p.slug || p.id}</small></td>
         <td>${cat ? cat.name : "-"} / ${sub ? sub.name : "-"}</td>
         <td>$${Number(p.price).toLocaleString("es-AR")}</td>
+        <td><a href="${url}" target="_blank">Ver ficha</a></td>
         <td class="row-actions">
           <button class="btn btn-ghost" data-edit-prod="${p.id}">Editar</button>
           <button class="btn btn-ghost" data-del-prod="${p.id}">Borrar</button>
@@ -135,22 +132,52 @@ const Admin = (() => {
     }).join("");
   }
 
+  function renderPages() {
+    if (!$("#page-table")) return;
+    $("#page-table").innerHTML = (data.pages || []).map((p) => `
+      <tr>
+        <td>${Media.thumbMarkup(p.image, p.mediaType)}</td>
+        <td>${p.title}<br><small>pagina.html?slug=${p.slug}</small></td>
+        <td>${p.seoTitle || p.title}</td>
+        <td class="row-actions">
+          <a class="btn btn-ghost" href="../pagina.html?slug=${encodeURIComponent(p.slug)}" target="_blank">Ver</a>
+          <button class="btn btn-ghost" data-edit-page="${p.id}">Editar</button>
+          <button class="btn btn-ghost" data-del-page="${p.id}">Borrar</button>
+        </td>
+      </tr>
+    `).join("");
+  }
+
+  function fillSiteForm() {
+    const s = data.settings || {};
+    if ($("#site-brand")) $("#site-brand").value = s.brand || "";
+    if ($("#site-tagline")) $("#site-tagline").value = s.tagline || "";
+    if ($("#site-seo-title")) $("#site-seo-title").value = s.seoTitle || "";
+    if ($("#site-seo-desc")) $("#site-seo-desc").value = s.seoDescription || "";
+    if ($("#site-seo-keywords")) $("#site-seo-keywords").value = s.seoKeywords || "";
+    if ($("#site-seo-image")) $("#site-seo-image").value = s.seoImage || "";
+    if ($("#site-logo")) $("#site-logo").value = s.logo || "";
+    if ($("#site-logo-preview")) $("#site-logo-preview").src = s.logo || "../assets/logo.svg";
+  }
+
   function renderAll() {
     fillSelects();
+    fillSiteForm();
     renderCats();
     renderSubs();
     renderProds();
+    renderPages();
   }
 
   async function persist() {
     try {
       await Store.persist(data);
-      renderAll();
-      toast("Guardado en Firebase.");
     } catch (err) {
-      toast(err.message || "Se guardó local, pero Firebase falló.");
-      renderAll();
+      throw new Error(FirebaseReady.authMessage(err));
     }
+    renderAll();
+    loadCloudForm();
+    toast("Guardado en Firebase (shop/catalog).");
   }
 
   function bind() {
@@ -163,6 +190,7 @@ const Admin = (() => {
       try {
         toast("Ingresando...");
         await Store.login(email, pass);
+        toast("Sesión iniciada. Cargando Firebase...");
         await showApp();
       } catch (err) {
         toast(FirebaseReady.authMessage(err));
@@ -185,16 +213,18 @@ const Admin = (() => {
 
     $("#prod-category").addEventListener("change", (e) => refreshSubOptions(e.target.value));
 
-    $("#cloud-form")?.addEventListener("submit", (e) => {
+    $("#cloud-form")?.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const payload = {
-        cloudName: $("#cloud-name").value.trim(),
-        uploadPreset: $("#cloud-preset").value.trim()
-      };
-      localStorage.setItem("zoe-veos-cloudinary", JSON.stringify(payload));
-      applyCloudSettings();
-      loadCloudForm();
-      toast("Cloudinary guardado.");
+      try {
+        data.settings = Object.assign({}, data.settings, {
+          cloudinaryCloudName: $("#cloud-name").value.trim(),
+          cloudinaryUploadPreset: $("#cloud-preset").value.trim()
+        });
+        await persist();
+        toast("Cloudinary guardado en Firebase.");
+      } catch (err) {
+        toast(err.message || "No se pudo guardar Cloudinary.");
+      }
     });
 
     $("#cat-form").addEventListener("submit", async (e) => {
@@ -215,35 +245,117 @@ const Admin = (() => {
         data.categories.push(item);
         editing = { type: null, id: null };
         e.target.reset();
-        persist();
+        await persist();
       } catch (err) {
         toast(err.message || "No se pudo guardar la categoría.");
       }
     });
 
-    $("#sub-form").addEventListener("submit", (e) => {
+    $("#sub-form").addEventListener("submit", async (e) => {
       e.preventDefault();
-      const item = {
-        id: editing.type === "sub" ? editing.id : Store.uid("sub"),
-        name: $("#sub-name").value.trim(),
-        slug: Store.slugify($("#sub-name").value),
-        categoryId: $("#sub-category").value
-      };
-      data.subcategories = data.subcategories.filter((s) => s.id !== item.id);
-      data.subcategories.push(item);
-      editing = { type: null, id: null };
-      e.target.reset();
-      persist();
+      try {
+        const item = {
+          id: editing.type === "sub" ? editing.id : Store.uid("sub"),
+          name: $("#sub-name").value.trim(),
+          slug: Store.slugify($("#sub-name").value),
+          categoryId: $("#sub-category").value
+        };
+        data.subcategories = data.subcategories.filter((s) => s.id !== item.id);
+        data.subcategories.push(item);
+        editing = { type: null, id: null };
+        e.target.reset();
+        await persist();
+      } catch (err) {
+        toast(err.message || "No se pudo guardar la subcategoría.");
+      }
+    });
+
+    $("#site-logo-file")?.addEventListener("change", () => {
+      const file = $("#site-logo-file").files?.[0];
+      if (!file || !$("#site-logo-preview")) return;
+      $("#site-logo-preview").src = URL.createObjectURL(file);
+      toast("Logo seleccionado. Tocá Guardar logo.");
+    });
+
+    $("#logo-form")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      try {
+        const uploaded = await maybeUpload($("#site-logo-file"), $("#site-logo").value.trim());
+        if (!uploaded.url) {
+          toast("Elegí un archivo o pegá una URL.");
+          return;
+        }
+        data.settings = Object.assign({}, data.settings, { logo: uploaded.url });
+        if ($("#site-logo")) $("#site-logo").value = uploaded.url;
+        if ($("#site-logo-preview")) $("#site-logo-preview").src = uploaded.url;
+        await persist();
+        toast("Logo guardado en Firebase.");
+      } catch (err) {
+        toast(err.message || "No se pudo guardar el logo.");
+      }
+    });
+
+    $("#site-form")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      try {
+        data.settings = Object.assign({}, data.settings, {
+          brand: $("#site-brand").value.trim(),
+          tagline: $("#site-tagline").value.trim(),
+          seoTitle: $("#site-seo-title").value.trim(),
+          seoDescription: $("#site-seo-desc").value.trim(),
+          seoKeywords: $("#site-seo-keywords").value.trim(),
+          seoImage: $("#site-seo-image").value.trim()
+        });
+        await persist();
+      } catch (err) {
+        toast(err.message || "No se pudo guardar la marca.");
+      }
+    });
+
+    $("#page-form")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      try {
+        const current = editing.type === "page" ? data.pages.find((p) => p.id === editing.id) : null;
+        const uploaded = await maybeUpload($("#page-file"), $("#page-image").value.trim(), current?.mediaType);
+        const title = $("#page-title").value.trim();
+        const item = {
+          id: editing.type === "page" ? editing.id : Store.uid("pg"),
+          title,
+          slug: Store.slugify($("#page-slug").value || title),
+          excerpt: $("#page-excerpt").value.trim(),
+          content: $("#page-content").value,
+          seoTitle: $("#page-seo-title").value.trim() || title,
+          seoDescription: $("#page-seo-desc").value.trim(),
+          seoKeywords: $("#page-seo-keywords").value.trim(),
+          seoImage: $("#page-seo-image").value.trim(),
+          image: uploaded.url,
+          mediaType: uploaded.mediaType,
+          published: $("#page-published").value === "true",
+          showInMenu: $("#page-menu").value === "true"
+        };
+        data.pages = (data.pages || []).filter((p) => p.id !== item.id);
+        data.pages.push(item);
+        editing = { type: null, id: null };
+        e.target.reset();
+        await persist();
+      } catch (err) {
+        toast(err.message || "No se pudo guardar la página.");
+      }
     });
 
     $("#prod-form").addEventListener("submit", async (e) => {
       e.preventDefault();
       try {
         const uploaded = await maybeUpload($("#prod-file"), $("#prod-image").value.trim());
+        const name = $("#prod-name").value.trim();
         const item = {
           id: editing.type === "prod" ? editing.id : Store.uid("p"),
-          name: $("#prod-name").value.trim(),
+          name,
+          slug: Store.slugify($("#prod-slug").value || name),
           description: $("#prod-desc").value.trim(),
+          seoTitle: $("#prod-seo-title").value.trim() || name,
+          seoDescription: $("#prod-seo-desc").value.trim(),
+          seoKeywords: $("#prod-seo-keywords").value.trim(),
           price: Number($("#prod-price").value || 0),
           categoryId: $("#prod-category").value,
           subcategoryId: $("#prod-subcategory").value,
@@ -253,13 +365,13 @@ const Admin = (() => {
         data.products.push(item);
         editing = { type: null, id: null };
         e.target.reset();
-        persist();
+        await persist();
       } catch (err) {
         toast(err.message || "No se pudo guardar el producto.");
       }
     });
 
-    document.body.addEventListener("click", (e) => {
+    document.body.addEventListener("click", async (e) => {
       const catId = e.target.dataset.editCat || e.target.dataset.delCat;
       const subId = e.target.dataset.editSub || e.target.dataset.delSub;
       const prodId = e.target.dataset.editProd || e.target.dataset.delProd;
@@ -274,10 +386,14 @@ const Admin = (() => {
         $("#cat-order").value = c.order;
       }
       if (e.target.dataset.delCat) {
-        data.categories = data.categories.filter((c) => c.id !== catId);
-        data.subcategories = data.subcategories.filter((s) => s.categoryId !== catId);
-        data.products = data.products.filter((p) => p.categoryId !== catId);
-        persist();
+        try {
+          data.categories = data.categories.filter((c) => c.id !== catId);
+          data.subcategories = data.subcategories.filter((s) => s.categoryId !== catId);
+          data.products = data.products.filter((p) => p.categoryId !== catId);
+          await persist();
+        } catch (err) {
+          toast(err.message || "No se pudo borrar la categoría.");
+        }
       }
       if (e.target.dataset.editSub) {
         const s = data.subcategories.find((x) => x.id === subId);
@@ -286,14 +402,22 @@ const Admin = (() => {
         $("#sub-category").value = s.categoryId;
       }
       if (e.target.dataset.delSub) {
-        data.subcategories = data.subcategories.filter((s) => s.id !== subId);
-        persist();
+        try {
+          data.subcategories = data.subcategories.filter((s) => s.id !== subId);
+          await persist();
+        } catch (err) {
+          toast(err.message || "No se pudo borrar la subcategoría.");
+        }
       }
       if (e.target.dataset.editProd) {
         const p = data.products.find((x) => x.id === prodId);
         editing = { type: "prod", id: p.id };
         $("#prod-name").value = p.name;
+        $("#prod-slug").value = p.slug || "";
         $("#prod-desc").value = p.description;
+        $("#prod-seo-title").value = p.seoTitle || "";
+        $("#prod-seo-desc").value = p.seoDescription || "";
+        $("#prod-seo-keywords").value = p.seoKeywords || "";
         $("#prod-price").value = p.price;
         $("#prod-category").value = p.categoryId;
         refreshSubOptions(p.categoryId);
@@ -301,8 +425,35 @@ const Admin = (() => {
         $("#prod-image").value = p.image;
       }
       if (e.target.dataset.delProd) {
-        data.products = data.products.filter((p) => p.id !== prodId);
-        persist();
+        try {
+          data.products = data.products.filter((p) => p.id !== prodId);
+          await persist();
+        } catch (err) {
+          toast(err.message || "No se pudo borrar el producto.");
+        }
+      }
+      if (e.target.dataset.editPage) {
+        const p = data.pages.find((x) => x.id === e.target.dataset.editPage);
+        editing = { type: "page", id: p.id };
+        $("#page-title").value = p.title;
+        $("#page-slug").value = p.slug;
+        $("#page-excerpt").value = p.excerpt || "";
+        $("#page-content").value = p.content || "";
+        $("#page-seo-title").value = p.seoTitle || "";
+        $("#page-seo-desc").value = p.seoDescription || "";
+        $("#page-seo-keywords").value = p.seoKeywords || "";
+        $("#page-seo-image").value = p.seoImage || "";
+        $("#page-image").value = p.image || "";
+        $("#page-published").value = p.published === false ? "false" : "true";
+        $("#page-menu").value = p.showInMenu ? "true" : "false";
+      }
+      if (e.target.dataset.delPage) {
+        try {
+          data.pages = data.pages.filter((p) => p.id !== e.target.dataset.delPage);
+          await persist();
+        } catch (err) {
+          toast(err.message || "No se pudo borrar la página.");
+        }
       }
     });
   }
